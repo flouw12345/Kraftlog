@@ -115,6 +115,8 @@ details+details{margin-top:8px}
 summary{cursor:pointer;font:600 16px var(--f-display);text-transform:uppercase;letter-spacing:.04em}
 ol.howto{padding-left:20px;margin:8px 0} ol.howto li{margin:4px 0}
 code{font:12px var(--f-mono);background:var(--sunk);padding:1px 5px;border-radius:4px}
+.cloud{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px;border-left:3px solid var(--accent)}
+.cloud p{margin:0;flex:1 1 200px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
 .empty{padding:22px;text-align:center;color:var(--muted)}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font:11px var(--f-mono);color:var(--muted)}
@@ -134,6 +136,7 @@ code{font:12px var(--f-mono);background:var(--sunk);padding:1px 5px;border-radiu
   </nav>
 </div></header>
 
+<div class="wrap" id="cloudDue" hidden></div>
 <main class="wrap" id="app"></main>
 
 <div class="dock" id="dock" hidden>
@@ -356,6 +359,7 @@ document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>{view.tab=
 function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===view.tab));
   ({heute:renderToday,plan:renderPlan,verlauf:renderHistory,setup:renderSetup})[view.tab]();
+  renderCloudDue();
   runTimer();
 }
 
@@ -699,7 +703,12 @@ function renderSetup(){
   </div>
   <h3>Daten</h3>
   <div class="panel stack"><p class="small">Alle Daten liegen nur auf diesem iPhone (offline). Exportiere regelmäßig ein Backup, z. B. in iCloud Drive über „In Dateien sichern“.</p>
-  <div class="row"><button class="btn sm primary" id="expJson">Backup exportieren (JSON)</button><button class="btn sm" id="expCsv">Sätze als CSV</button><label class="btn sm">Backup importieren<input type="file" id="impJson" accept=".json,application/json" hidden></label></div>
+  <div class="stack"><b>iCloud-Backup</b>
+   <p class="small muted">Letztes Backup: ${CB.last?fmtDate(CB.last)+" "+fmtTime(CB.last):"noch keins"}${CB.on?" · nächstes fällig "+(CB.last?fmtDate(CB.last+WEEK):"jetzt"):""}</p>
+   <label class="row small"><input type="checkbox" id="cbOn" ${CB.on?"checked":""} style="width:auto;min-height:0">Einmal pro Woche an das iCloud-Backup erinnern</label>
+   <div class="row"><button class="btn sm primary" id="cbNow">Jetzt in iCloud sichern</button></div>
+   <p class="small muted">Im Teilen-Menü „In Dateien sichern“ → iCloud Drive → Ordner „Kraftlog“ wählen. iOS merkt sich den Ordner beim nächsten Mal.</p></div>
+  <div class="row"><button class="btn sm" id="expJson">Backup exportieren (JSON)</button><button class="btn sm" id="expCsv">Sätze als CSV</button><label class="btn sm">Backup importieren<input type="file" id="impJson" accept=".json,application/json" hidden></label></div>
   <div id="impMsg" class="small"></div></div>`;
   const pct=document.getElementById("tmPct"); pct.oninput=()=>document.getElementById("pctLbl").textContent=pct.value+" %";
   document.getElementById("age").onchange=e=>{const a=+e.target.value;if(a>10)document.getElementById("hrmax").value=Math.round(208-.7*a)};
@@ -708,7 +717,9 @@ function renderSetup(){
   document.getElementById("saveSet").onclick=()=>{read();let changed=false;for(const k in LIFTS){const v=parseFloat(document.getElementById("tm_"+k).value.replace(",","."));if(v>0&&v!==S.tm[k]){S.tm[k]=v;changed=true}}
     if(changed)S.tmHistory.push({t:Date.now(),tm:{...S.tm},note:"manuell"});saveState();renderSetup();document.getElementById("setMsg").textContent="Gespeichert."};
   document.getElementById("resetTm").onclick=()=>{read();for(const k in LIFTS)S.tm[k]=roundTo(epley(S.inputs[k].w,S.inputs[k].r)*S.tmPct,2.5);S.tmHistory.push({t:Date.now(),tm:{...S.tm},note:"neu berechnet"});saveState();renderSetup();document.getElementById("setMsg").textContent="TM neu berechnet."};
-  document.getElementById("expJson").onclick=()=>exportFile("kraftlog-backup-"+new Date().toISOString().slice(0,10)+".json",JSON.stringify({app:"nsuns-kraftlog",v:1,exported:new Date().toISOString(),state:S,workouts:W},null,1),"application/json");
+  document.getElementById("expJson").onclick=()=>exportFile(backupName(),backupJson(),"application/json");
+  document.getElementById("cbOn").onchange=e=>{CB.on=e.target.checked;kvSet("nsuns_icloud",CB);renderSetup()};
+  document.getElementById("cbNow").onclick=icloudBackup;
   document.getElementById("expCsv").onclick=()=>exportFile("kraftlog-saetze-"+new Date().toISOString().slice(0,10)+".csv",toCsv(),"text/csv");
   document.getElementById("impJson").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
     let j;try{j=JSON.parse(String(r.result))}catch(err){document.getElementById("impMsg").textContent="Die Datei ist kein gültiges JSON.";return}
@@ -722,10 +733,35 @@ function renderSetup(){
 async function exportFile(name,text,type){
   const blob=new Blob([text],{type});
   try{const file=new File([blob],name,{type});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}
-  catch(e){if(e&&e.name==="AbortError")return}
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return true}}
+  catch(e){if(e&&e.name==="AbortError")return false}
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
+  return true;
+}
+const backupName=()=>"kraftlog-backup-"+new Date().toISOString().slice(0,10)+".json";
+const backupJson=()=>JSON.stringify({app:"nsuns-kraftlog",v:1,exported:new Date().toISOString(),state:S,workouts:W},null,1);
+
+/* ---------- Wöchentliches iCloud-Backup ---------- */
+// Eine Web-App darf nicht selbst in iCloud Drive schreiben. Deshalb: einmal pro Woche erinnern,
+// das Backup per Teilen-Menü („In Dateien sichern“) ablegen und den Zeitpunkt merken.
+const WEEK=7*864e5;
+let CB={last:0,on:true,snooze:0};
+function backupDue(){const now=Date.now();return CB.on&&!S.active&&W.length>0&&now-CB.last>=WEEK&&now>=CB.snooze}
+function renderCloudDue(){
+  const el=document.getElementById("cloudDue");
+  if(!S||!backupDue()){el.hidden=true;return}
+  el.hidden=false;
+  el.innerHTML=`<div class="panel cloud"><p class="small"><b>iCloud-Backup fällig.</b> ${CB.last?"Letztes vor "+Math.floor((Date.now()-CB.last)/864e5)+" Tagen.":"Noch kein Backup gesichert."}</p>
+   <button class="btn sm primary" id="cdNow">Jetzt sichern</button><button class="btn sm ghost" id="cdLater">Morgen</button></div>`;
+  document.getElementById("cdNow").onclick=icloudBackup;
+  document.getElementById("cdLater").onclick=()=>{CB.snooze=Date.now()+864e5;kvSet("nsuns_icloud",CB);renderCloudDue()};
+}
+async function icloudBackup(){
+  if(!await exportFile(backupName(),backupJson(),"application/json")) return;
+  CB.last=Date.now();CB.snooze=0;kvSet("nsuns_icloud",CB);
+  toast("Backup gesichert · nächstes am "+fmtDate(CB.last+WEEK));
+  render();
 }
 function toCsv(){
   const q=v=>{v=v==null?"":String(v);return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
@@ -740,12 +776,14 @@ function toCsv(){
 (async()=>{
   S=await kvGet("nsuns_state"); if(!S||!S.tm){S=defaultState();kvSet("nsuns_state",S)} else S=Object.assign(defaultState(),S);
   W=(await kvGet("nsuns_workouts"))||[];
+  CB=Object.assign(CB,await kvGet("nsuns_icloud"));
   render();
   if(S.active) keepAwake();
   setSync(navigator.onLine?"auf dem iPhone":"offline · auf dem iPhone");
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
   if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 })();
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S)renderCloudDue()});
 addEventListener("online",()=>setSync("auf dem iPhone"));addEventListener("offline",()=>setSync("offline · auf dem iPhone"));
 </script>
 

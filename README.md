@@ -22,6 +22,10 @@ Service Worker funktionieren nur über HTTPS, deshalb reicht ein reiner HTTP-Ser
 - Beim Löschen der App vom Home-Bildschirm werden auch die Daten gelöscht. Vorher im Setup ein **Backup exportieren**.
 - Ein Backup über Setup → „Backup exportieren (JSON)“ lässt sich mit „In Dateien sichern“ in iCloud Drive ablegen.
   Über „Backup importieren“ stellst du es wieder her, auch auf einem neuen iPhone.
+- **Wöchentliches iCloud-Backup:** Ist das letzte Backup älter als 7 Tage, zeigt die App oben einen Hinweis „iCloud-Backup fällig“.
+  „Jetzt sichern“ öffnet das Teilen-Menü → „In Dateien sichern“ → iCloud Drive (z. B. Ordner `Kraftlog`). Danach ist für eine Woche Ruhe,
+  „Morgen“ verschiebt den Hinweis um einen Tag. Ein- und ausschalten unter Setup → Daten.
+  Vollautomatisch im Hintergrund geht es nicht: iOS erlaubt Web-Apps keinen direkten Zugriff auf iCloud Drive, ein Tipp ist immer nötig.
 - Die CSV (Semikolon-getrennt, deutsches Zahlenformat) öffnet direkt in Numbers oder Excel.
 
 ## Updates
