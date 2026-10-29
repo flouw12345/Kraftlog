@@ -9,7 +9,7 @@ Alle Daten liegen lokal auf dem iPhone (IndexedDB). Ein Export ist als JSON-Back
 2. „Add file → Upload files“ wählen und alle Dateien aus diesem Ordner hochladen:
    `index.html`, `sw.js`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`.
 3. Unter Settings → Pages die Quelle „Deploy from a branch“ einstellen, mit Branch `main` und Ordner `/ (root)`.
-4. Nach ca. 1 Minute ist die App erreichbar unter `https://flouw12345.github.io/kraftlog/`.
+4. Nach ca. 1 Minute ist die App erreichbar unter `https://flouw12345.github.io/Kraftlog/`.
 5. Die Adresse **in Safari** öffnen und über Teilen → **Zum Home-Bildschirm** hinzufügen.
 6. Die App einmal vom Home-Bildschirm aus starten (mit Internet). Ab dann funktioniert sie offline.
 
