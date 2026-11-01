@@ -36,7 +36,7 @@ header.top .in{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area
 .brand h1{font:700 26px/1 var(--f-display);letter-spacing:.02em;margin:0;text-transform:uppercase}
 .brand .sync{font:12px var(--f-mono);color:var(--muted)}
 nav.tabs{display:flex;gap:4px;margin-top:8px}
-nav.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:8px 4px 9px;font:600 15px var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+nav.tabs button{flex:1;min-width:0;background:none;border:0;border-bottom:3px solid transparent;padding:8px 2px 9px;font:600 15px var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);cursor:pointer}
 nav.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
 h2{font:700 30px/1.05 var(--f-display);text-transform:uppercase;letter-spacing:.01em;margin:22px 0 4px;text-wrap:balance}
 h3{font:600 19px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.04em;margin:22px 0 8px}
@@ -115,6 +115,12 @@ details+details{margin-top:8px}
 summary{cursor:pointer;font:600 16px var(--f-display);text-transform:uppercase;letter-spacing:.04em}
 ol.howto{padding-left:20px;margin:8px 0} ol.howto li{margin:4px 0}
 code{font:12px var(--f-mono);background:var(--sunk);padding:1px 5px;border-radius:4px}
+@media (max-width:400px){nav.tabs button{font-size:13px;letter-spacing:.02em}}
+.seg{display:flex;gap:4px}
+.seg button{flex:1;min-width:0;min-height:40px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;font:600 15px var(--f-display);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.rate{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.rate .hint{font-size:12px}
 .cloud{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px;border-left:3px solid var(--accent)}
 .cloud p{margin:0;flex:1 1 200px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
@@ -132,6 +138,7 @@ code{font:12px var(--f-mono);background:var(--sunk);padding:1px 5px;border-radiu
     <button role="tab" id="tab-heute" aria-selected="true" data-tab="heute">Heute</button>
     <button role="tab" id="tab-plan" aria-selected="false" data-tab="plan">Plan</button>
     <button role="tab" id="tab-verlauf" aria-selected="false" data-tab="verlauf">Verlauf</button>
+    <button role="tab" id="tab-koerper" aria-selected="false" data-tab="koerper">Körper</button>
     <button role="tab" id="tab-setup" aria-selected="false" data-tab="setup">Setup</button>
   </nav>
 </div></header>
@@ -178,7 +185,7 @@ function restFor(tier,pct){ if(tier==="t1") return pct>=.85?210:150; if(tier==="
 const epley=(w,r)=>r<=1?w:w*(1+r/30);
 function defaultState(){
   const inputs={bench:{w:100,r:5},squat:{w:100,r:5},dl:{w:160,r:5},ohp:{w:55,r:8}};
-  const s={v:1,inputs,tmPct:.85,round:2.5,bar:20,freq:4,age:30,hrmax:187,nextDay:0,stall:{bench:0,squat:0,dl:0,ohp:0},tm:{},tmHistory:[],active:null,created:Date.now()};
+  const s={v:1,inputs,tmPct:.85,round:2.5,bar:20,freq:4,age:30,hrmax:187,nextDay:0,stall:{bench:0,squat:0,dl:0,ohp:0},tm:{},tmHistory:[],active:null,restSound:true,restMode:"mix",created:Date.now()};
   for(const k in LIFTS) s.tm[k]=roundTo(epley(inputs[k].w,inputs[k].r)*s.tmPct,2.5);
   s.tmHistory.push({t:Date.now(),tm:{...s.tm},note:"Start"});
   return s;
@@ -333,32 +340,76 @@ function autoregulate(a,s){
 }
 
 /* ---------- Timer ---------- */
-let tick=null, audioCtx=null, wakeLock=null, beeped=false;
+let tick=null, audioCtx=null, wakeLock=null, beeped=false, lastTick=null;
 function ensureAudio(){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==="suspended")audioCtx.resume()}catch(e){}}
-function beep(){try{if(!audioCtx)return;[0,.18,.36].forEach(d=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=880;o.connect(g);g.connect(audioCtx.destination);g.gain.setValueAtTime(.0001,audioCtx.currentTime+d);g.gain.exponentialRampToValueAtTime(.3,audioCtx.currentTime+d+.02);g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+d+.15);o.start(audioCtx.currentTime+d);o.stop(audioCtx.currentTime+d+.16)})}catch(e){} try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
+function setAudioSession(t){try{if(navigator.audioSession&&navigator.audioSession.type!==t)navigator.audioSession.type=t}catch(e){}}
+function tone(freq,len,vol){try{if(!audioCtx)return;const t=audioCtx.currentTime,o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;o.connect(g);g.connect(audioCtx.destination);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+len);o.start(t);o.stop(t+len+.02)}catch(e){}}
+// Countdown in der App: kurze Töne bei 5…1 s, langer Ton bei 0. „transient“ duckt Musik kurz statt sie zu stoppen.
+function countTick(n){
+  if(n===0){try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
+  if(!S.restSound||lockPlaying()) return;
+  setAudioSession("transient"); ensureAudio();
+  n>0?tone(880,.12,.35):tone(1320,.5,.4);
+}
+
+/* Sperrbildschirm-Countdown: eine Audiodatei so lang wie die Pause (Stille + Countdown-Töne).
+   iOS zeigt sie unter „Wird gerade abgespielt“ mit Restzeit an und spielt sie auch bei gesperrtem Display. */
+const restAudio=new Audio(); let restUrl=null;
+const lockPlaying=()=>!!restUrl&&!restAudio.paused;
+function wavFor(sec,beeps){
+  const sr=8000,n=Math.ceil((sec+.7)*sr),buf=new ArrayBuffer(44+n),v=new DataView(buf),d=new Uint8Array(buf,44);
+  const str=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  str(0,"RIFF");v.setUint32(4,36+n,true);str(8,"WAVE");str(12,"fmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr,true);v.setUint16(32,1,true);v.setUint16(34,8,true);str(36,"data");v.setUint32(40,n,true);
+  d.fill(128);
+  const burst=(at,len,f)=>{const a=Math.floor(at*sr);if(a<0)return;for(let i=0;i<len*sr&&a+i<n;i++){const env=Math.min(1,i/80,(len*sr-i)/80);d[a+i]=128+Math.round(90*env*Math.sin(2*Math.PI*f*i/sr))}};
+  if(beeps){for(let k=5;k>=1;k--)burst(sec-k,.12,880);burst(sec,.5,1320)}
+  return new Blob([buf],{type:"audio/wav"});
+}
+function lockStart(){
+  const a=S.active; if(S.restMode!=="lock"||!a||!a.restEnd) return;
+  const left=(a.restEnd-Date.now())/1000; if(left<1) return lockStop();
+  setAudioSession("playback");
+  if(restUrl) URL.revokeObjectURL(restUrl);
+  restUrl=URL.createObjectURL(wavFor(left,S.restSound)); restAudio.src=restUrl; restAudio.play().catch(()=>{});
+  if("mediaSession" in navigator){const ms=navigator.mediaSession;
+    try{ms.metadata=new MediaMetadata({title:"Pause · weiter um "+new Date(a.restEnd).toLocaleTimeString("de-DE"),artist:a.restLabel||"",album:"Kraftlog",artwork:[{src:"icon-512.png",sizes:"512x512",type:"image/png"}]});
+      ms.setActionHandler("nexttrack",skipRest); ms.setActionHandler("pause",skipRest); ms.setActionHandler("play",null);
+      ms.setPositionState({duration:left+.7,position:0,playbackRate:1})}catch(e){}}
+}
+function lockStop(){
+  if(!restUrl) return;
+  restAudio.pause(); restAudio.removeAttribute("src"); URL.revokeObjectURL(restUrl); restUrl=null;
+  try{navigator.mediaSession.metadata=null;navigator.mediaSession.playbackState="none"}catch(e){}
+  setAudioSession("auto");
+}
+restAudio.addEventListener("ended",lockStop);
 async function keepAwake(){try{if(navigator.wakeLock&&!wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>wakeLock=null)}}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S&&S.active)keepAwake()});
-function startRest(sec,label){ const a=S.active; a.restEnd=Date.now()+sec*1000; a.restLen=sec; a.restLabel=label; beeped=false; saveState(); runTimer(); }
+function startRest(sec,label){ const a=S.active; a.restEnd=Date.now()+sec*1000; a.restLen=sec; a.restLabel=label; beeped=false; lastTick=null; saveState(); runTimer(); lockStart(); }
+function skipRest(){if(S.active){S.active.restEnd=null;saveState();runTimer()}}
 function runTimer(){
   const a=S&&S.active, dock=document.getElementById("dock");
-  if(!a||!a.restEnd){dock.hidden=true;clearInterval(tick);tick=null;return}
+  if(!a||!a.restEnd){dock.hidden=true;clearInterval(tick);tick=null;lockStop();return}
   dock.hidden=false;
   const upd=()=>{ const left=(a.restEnd-Date.now())/1000, c=document.getElementById("clock");
     c.textContent=left>=0?mmss(left):"+"+mmss(-left); c.classList.toggle("over",left<0);
     document.getElementById("barfill").style.width=Math.min(100,Math.max(0,100*(1-left/a.restLen)))+"%";
     document.getElementById("clocklab").innerHTML="<b>"+(left>=0?"Pause":"Bereit")+"</b>"+esc(a.restLabel||"");
-    if(left<=0&&!beeped){beeped=true;beep()} };
+    const sec=Math.ceil(left);
+    if(left>0&&sec<=5&&sec!==lastTick&&left>sec-.5){lastTick=sec;countTick(sec)}
+    if(left<=0&&!beeped){beeped=true;countTick(0)} };
   upd(); clearInterval(tick); tick=setInterval(upd,250);
 }
-document.getElementById("plus30").onclick=()=>{if(S.active&&S.active.restEnd){S.active.restEnd+=30000;S.active.restLen+=30;beeped=false;saveState();runTimer()}};
-document.getElementById("skip").onclick=()=>{if(S.active){S.active.restEnd=null;saveState();runTimer()}};
+document.getElementById("plus30").onclick=()=>{if(S.active&&S.active.restEnd){S.active.restEnd=Math.max(S.active.restEnd,Date.now())+30000;S.active.restLen+=30;beeped=false;lastTick=null;saveState();runTimer();lockStart()}};
+document.getElementById("skip").onclick=skipRest;
 
 /* ---------- Render ---------- */
 const app=document.getElementById("app");
 document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>{view.tab=b.dataset.tab;view.detail=null;render();window.scrollTo(0,0)});
 function render(){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===view.tab));
-  ({heute:renderToday,plan:renderPlan,verlauf:renderHistory,setup:renderSetup})[view.tab]();
+  ({heute:renderToday,plan:renderPlan,verlauf:renderHistory,koerper:renderBody,setup:renderSetup})[view.tab]();
   renderCloudDue();
   runTimer();
 }
@@ -403,6 +454,7 @@ function renderToday(){
     html+=`<p class="muted">Gewichte aus deinem aktuellen Trainingsmax (TM). Rote Sätze sind AMRAP: so viele saubere Wdh wie möglich, 1 Wdh im Tank. Der markierte AMRAP steuert die Progression.</p>
     <div class="row" style="margin-top:10px"><button class="btn primary" id="startW">Workout starten</button>
     <label class="f" style="flex:1;min-width:150px"><span class="sr">Anderen Tag wählen</span><select id="pickDay">${DAYS.map((x,i)=>`<option value="${i}" ${i===dayIdx?"selected":""}>${x.short} · ${esc(x.name)}</option>`).join("")}</select></label></div>`;
+    html+=checkinCard();
   }
   for(const b of groupBlocks(preview.sets)){
     const tmTxt=b.lift&&b.tier!=="acc"?`TM ${fmtKg((a?a.tmBefore:S.tm)[b.lift])} kg`:"Hypertrophie";
@@ -417,6 +469,7 @@ function renderToday(){
   if(!a){
     document.getElementById("startW").onclick=()=>{ensureAudio();const w=buildSession(+document.getElementById("pickDay").value);w.start=Date.now();S.active=w;saveState();keepAwake();render();window.scrollTo(0,0)};
     document.getElementById("pickDay").onchange=e=>{S.nextDay=+e.target.value;saveState();render()};
+    document.getElementById("goBody").onclick=()=>{view.tab="koerper";view.bodyDay=null;render();window.scrollTo(0,0)};
     return;
   }
   app.querySelectorAll(".set").forEach(row=>{
@@ -701,14 +754,20 @@ function renderSetup(){
    <div class="row"><button class="btn primary" id="saveSet">Speichern</button><button class="btn" id="resetTm">TM aus e1RM neu berechnen</button></div>
    <div id="setMsg" class="small"></div>
   </div>
+  <h3>Pausen-Timer</h3>
+  <div class="panel stack">
+   <label class="row small" style="flex-wrap:nowrap"><input type="checkbox" id="rsSound" ${S.restSound?"checked":""} style="width:auto;min-height:0">Countdown-Ton in den letzten 5 Sekunden</label>
+   <label class="f">Wenn das iPhone gesperrt ist<select id="rsMode"><option value="mix" ${S.restMode!=="lock"?"selected":""}>Nichts anzeigen · Musik läuft ungestört weiter</option><option value="lock" ${S.restMode==="lock"?"selected":""}>Countdown auf dem Sperrbildschirm</option></select></label>
+   <p class="small muted">${S.restMode==="lock"?"Die Pause erscheint auf dem Sperrbildschirm und im Kontrollzentrum unter „Wird gerade abgespielt“, mit Restzeit und Fortschrittsbalken. Die Töne laufen auch bei gesperrtem Display, über Kopfhörer oder Lautsprecher. Nachteil: iOS pausiert dafür Musik aus Spotify oder Apple Music. „Weiter“ (⏭) auf dem Sperrbildschirm beendet die Pause.":"Die Töne laufen, solange die App offen ist, und legen sich kurz über deine Musik. Sind Kopfhörer verbunden, hörst du sie dort. Während eines Workouts bleibt das Display an."}</p>
+  </div>
   <h3>Daten</h3>
   <div class="panel stack"><p class="small">Alle Daten liegen nur auf diesem iPhone (offline). Exportiere regelmäßig ein Backup, z. B. in iCloud Drive über „In Dateien sichern“.</p>
   <div class="stack"><b>iCloud-Backup</b>
    <p class="small muted">Letztes Backup: ${CB.last?fmtDate(CB.last)+" "+fmtTime(CB.last):"noch keins"}${CB.on?" · nächstes fällig "+(CB.last?fmtDate(CB.last+WEEK):"jetzt"):""}</p>
-   <label class="row small"><input type="checkbox" id="cbOn" ${CB.on?"checked":""} style="width:auto;min-height:0">Einmal pro Woche an das iCloud-Backup erinnern</label>
+   <label class="row small" style="flex-wrap:nowrap"><input type="checkbox" id="cbOn" ${CB.on?"checked":""} style="width:auto;min-height:0">Einmal pro Woche an das iCloud-Backup erinnern</label>
    <div class="row"><button class="btn sm primary" id="cbNow">Jetzt in iCloud sichern</button></div>
    <p class="small muted">Im Teilen-Menü „In Dateien sichern“ → iCloud Drive → Ordner „Kraftlog“ wählen. iOS merkt sich den Ordner beim nächsten Mal.</p></div>
-  <div class="row"><button class="btn sm" id="expJson">Backup exportieren (JSON)</button><button class="btn sm" id="expCsv">Sätze als CSV</button><label class="btn sm">Backup importieren<input type="file" id="impJson" accept=".json,application/json" hidden></label></div>
+  <div class="row"><button class="btn sm" id="expJson">Backup exportieren (JSON)</button><button class="btn sm" id="expCsv">Sätze als CSV</button><button class="btn sm" id="expBody">Körperdaten als CSV</button><label class="btn sm">Backup importieren<input type="file" id="impJson" accept=".json,application/json" hidden></label></div>
   <div id="impMsg" class="small"></div></div>`;
   const pct=document.getElementById("tmPct"); pct.oninput=()=>document.getElementById("pctLbl").textContent=pct.value+" %";
   document.getElementById("age").onchange=e=>{const a=+e.target.value;if(a>10)document.getElementById("hrmax").value=Math.round(208-.7*a)};
@@ -720,13 +779,123 @@ function renderSetup(){
   document.getElementById("expJson").onclick=()=>exportFile(backupName(),backupJson(),"application/json");
   document.getElementById("cbOn").onchange=e=>{CB.on=e.target.checked;kvSet("nsuns_icloud",CB);renderSetup()};
   document.getElementById("cbNow").onclick=icloudBackup;
+  document.getElementById("expBody").onclick=()=>exportFile("kraftlog-koerper-"+new Date().toISOString().slice(0,10)+".csv",bodyCsv(),"text/csv");
+  document.getElementById("rsSound").onchange=e=>{S.restSound=e.target.checked;saveState()};
+  document.getElementById("rsMode").onchange=e=>{S.restMode=e.target.value;saveState();if(S.restMode!=="lock")lockStop();renderSetup()};
   document.getElementById("expCsv").onclick=()=>exportFile("kraftlog-saetze-"+new Date().toISOString().slice(0,10)+".csv",toCsv(),"text/csv");
   document.getElementById("impJson").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
     let j;try{j=JSON.parse(String(r.result))}catch(err){document.getElementById("impMsg").textContent="Die Datei ist kein gültiges JSON.";return}
     if(!j.state||!Array.isArray(j.workouts)){document.getElementById("impMsg").textContent="Kein Kraftlog-Backup erkannt (state/workouts fehlen).";return}
-    const box=document.getElementById("impMsg");box.innerHTML=`<div class="row"><span>${j.workouts.length} Workouts importieren und aktuelle Daten ersetzen?</span><button class="btn sm" id="impY">Ersetzen</button><button class="btn sm ghost" id="impN">Abbrechen</button></div>`;
-    document.getElementById("impY").onclick=()=>{S=Object.assign(defaultState(),j.state);W=j.workouts.sort((a,b)=>b.start-a.start);kvSet("nsuns_state",S);kvSet("nsuns_workouts",W);renderSetup();toast("Backup importiert")};
+    const box=document.getElementById("impMsg");box.innerHTML=`<div class="row"><span>${j.workouts.length} Workouts${Array.isArray(j.body)?" und "+j.body.length+" Körper-Einträge":""} importieren und aktuelle Daten ersetzen?</span><button class="btn sm" id="impY">Ersetzen</button><button class="btn sm ghost" id="impN">Abbrechen</button></div>`;
+    document.getElementById("impY").onclick=()=>{S=Object.assign(defaultState(),j.state);W=j.workouts.sort((a,b)=>b.start-a.start);if(Array.isArray(j.body)){B=j.body;kvSet("nsuns_body",B)}kvSet("nsuns_state",S);kvSet("nsuns_workouts",W);renderSetup();toast("Backup importiert")};
     document.getElementById("impN").onclick=()=>{box.textContent=""};};r.readAsText(f)};
+}
+
+/* ---------- Körper & Verfassung ---------- */
+let B=[]; // ein Eintrag pro Tag: {d:"2026-11-01",kg,sleep,steps,fat,waist,energy,mood,sq,stress,sore,note,t}
+const RATE=[["energy","Energie",["sehr niedrig","niedrig","okay","gut","top"]],["mood","Stimmung",["mies","gedrückt","okay","gut","super"]],
+ ["sq","Schlafqualität",["sehr schlecht","schlecht","okay","gut","sehr gut"]],["stress","Stress",["kaum","wenig","mittel","hoch","sehr hoch"]],
+ ["sore","Muskelkater",["keiner","leicht","spürbar","stark","sehr stark"]]];
+const NUMS=[["kg","Gewicht kg","decimal"],["sleep","Schlaf Stunden","decimal"],["steps","Schritte","numeric"],["fat","Körperfett %","decimal"],["waist","Bauchumfang cm","decimal"]];
+const p2=n=>String(n).padStart(2,"0");
+const dayKey=t=>{const d=new Date(t);return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())};
+const keyDate=k=>new Date(k+"T12:00:00");
+const fmtDay=k=>keyDate(k).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});
+function weekOf(k){const d=keyDate(k);d.setDate(d.getDate()-(d.getDay()+6)%7);return dayKey(d)}
+function isoWeek(k){const d=keyDate(k);d.setDate(d.getDate()+3-(d.getDay()+6)%7);const y=new Date(d.getFullYear(),0,4);return 1+Math.round(((d-y)/864e5-3+(y.getDay()+6)%7)/7)}
+const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+const fmt1=x=>x==null?"–":x.toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
+const signed=x=>x==null?"–":(x>0?"+":x<0?"−":"±")+fmt1(Math.abs(x));
+const bodyEntry=k=>B.find(e=>e.d===k);
+function saveBody(e){B=B.filter(x=>x.d!==e.d);if(Object.keys(e).some(k=>!["d","t"].includes(k)))B.push(e);B.sort((a,b)=>a.d<b.d?1:-1);kvSet("nsuns_body",B)}
+// Wochen Mo–So mit Durchschnitten, neueste zuerst
+function bodyWeeks(){
+  const g={};for(const e of B)(g[weekOf(e.d)]=g[weekOf(e.d)]||[]).push(e);
+  const f=(es,k)=>{const v=es.map(e=>e[k]).filter(x=>x!=null);return v.length?mean(v):null};
+  return Object.keys(g).sort().reverse().map(w=>{const es=g[w],o={w,n:es.length,kgN:es.filter(e=>e.kg!=null).length};
+    for(const k of ["kg","sleep","steps","fat","waist","energy","mood","sq","stress","sore"])o[k]=f(es,k);return o});
+}
+// Steigung kg/Woche über die Wochen-Schnitte der letzten 4 Wochen
+function weightTrend(ws){const pts=ws.filter(w=>w.kg!=null&&keyDate(w.w)>Date.now()-35*864e5).map(w=>[keyDate(w.w)/6048e5,w.kg]);
+  if(pts.length<2)return null;const mx=mean(pts.map(p=>p[0])),my=mean(pts.map(p=>p[1]));
+  const num=pts.reduce((s,p)=>s+(p[0]-mx)*(p[1]-my),0),den=pts.reduce((s,p)=>s+(p[0]-mx)**2,0);return den?num/den:null}
+function readiness(e){
+  if(!e)return null;const low=[];
+  if(e.sleep!=null&&e.sleep<6)low.push("wenig Schlaf");if(e.energy!=null&&e.energy<=2)low.push("niedrige Energie");
+  if(e.sore!=null&&e.sore>=4)low.push("starker Muskelkater");if(e.stress!=null&&e.stress>=4)low.push("viel Stress");
+  return low.length?`Heute eher angeschlagen (${low.join(", ")}). Saubere Technik vor Rekorden, bei den AMRAPs lieber 2 Wdh im Tank lassen.`:null;
+}
+function checkinCard(){
+  const e=bodyEntry(dayKey(Date.now()));
+  const bits=e?[e.kg!=null?fmt1(e.kg)+" kg":null,e.sleep!=null?fmt1(e.sleep)+" h Schlaf":null,e.energy?"Energie "+e.energy+"/5":null,e.mood?"Stimmung "+e.mood+"/5":null].filter(Boolean):[];
+  const r=readiness(e);
+  return `<div class="panel cloud" style="margin-top:14px"><p class="small">${e?`<b>Körper-Check heute:</b> ${bits.join(" · ")||"eingetragen"}`:`<b>Körper-Check:</b> Gewicht und Verfassung für heute noch nicht eingetragen.`}${r?`<br><span style="color:var(--warn)">${esc(r)}</span>`:""}</p>
+   <button class="btn sm${e?"":" primary"}" id="goBody">${e?"Bearbeiten":"Eintragen"}</button></div>`;
+}
+function weightChart(){
+  const pts=B.filter(e=>e.kg!=null&&keyDate(e.d)>Date.now()-91*864e5).map(e=>({t:+keyDate(e.d),v:e.kg})).reverse();
+  if(pts.length<2)return `<p class="small muted">Das Diagramm erscheint ab zwei Gewichtseinträgen.</p>`;
+  const wk=bodyWeeks().filter(w=>w.kg!=null&&keyDate(w.w)>Date.now()-98*864e5).map(w=>({t:+keyDate(w.w)+3*864e5,v:w.kg})).reverse();
+  const W0=340,H0=160,pl=34,pr=8,pt=10,pb=22,all=pts.concat(wk);
+  const t0=Math.min(...all.map(p=>p.t)),t1=Math.max(...all.map(p=>p.t));
+  let lo=Math.floor(Math.min(...all.map(p=>p.v))-.5),hi=Math.ceil(Math.max(...all.map(p=>p.v))+.5);
+  const x=t=>pl+(W0-pl-pr)*((t-t0)/Math.max(1,t1-t0)),y=v=>pt+(H0-pt-pb)*(1-(v-lo)/Math.max(1,hi-lo));
+  const step=Math.max(1,Math.ceil((hi-lo)/4));let g="";
+  for(let v=lo;v<=hi;v+=step)g+=`<line x1="${pl}" x2="${W0-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${pl-4}" y="${y(v)+3}" text-anchor="end">${v}</text>`;
+  const dots=pts.map(p=>`<circle cx="${x(p.t)}" cy="${y(p.v)}" r="2.5" fill="var(--acc)" opacity=".7"/>`).join("");
+  const line=wk.length>1?`<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="${wk.map(p=>x(p.t)+","+y(p.v)).join(" ")}"/>`:"";
+  return `<div class="panel"><svg class="chart" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Gewichtsverlauf">${g}${dots}${line}<text x="${pl}" y="${H0-6}">${fmtDate(t0)}</text><text x="${W0-pr}" y="${H0-6}" text-anchor="end">${fmtDate(t1)}</text></svg>
+  <div class="legend"><span><i style="background:var(--acc)"></i>Tageswert</span><span><i style="background:var(--accent)"></i>Wochen-Ø</span></div></div>`;
+}
+function renderBody(){
+  const today=dayKey(Date.now()),k=view.bodyDay||today,e=bodyEntry(k)||{d:k};
+  const ws=bodyWeeks(),thisW=ws.find(w=>w.w===weekOf(today)),prevW=ws.find(w=>w.w===weekOf(dayKey(Date.now()-7*864e5)));
+  const tr=weightTrend(ws),last7=B.filter(x=>keyDate(x.d)>Date.now()-7*864e5);
+  const m7=key=>mean(last7.map(x=>x[key]).filter(v=>v!=null));
+  let html=`<h2>Körper</h2><p class="muted">Am besten morgens nach dem Aufstehen wiegen. Einzelwerte schwanken um 1–2 kg, aussagekräftig ist der Wochen-Durchschnitt (Mo–So).</p>
+  <div class="panel grid4" style="margin-top:12px">
+   <div class="stat"><b>${fmt1(thisW&&thisW.kg)}</b><span>Ø kg diese Wo${thisW&&thisW.kgN?" ("+thisW.kgN+"×)":""}</span></div>
+   <div class="stat"><b>${fmt1(prevW&&prevW.kg)}</b><span>Ø kg Vorwoche</span></div>
+   <div class="stat"><b>${thisW&&prevW&&thisW.kg!=null&&prevW.kg!=null?signed(thisW.kg-prevW.kg):"–"}</b><span>kg zur Vorwoche</span></div>
+   <div class="stat"><b>${signed(tr)}</b><span>Trend kg/Woche</span></div></div>
+  <div class="panel grid4" style="margin-top:8px">
+   <div class="stat"><b>${fmt1(m7("sleep"))}</b><span>Ø Schlaf h (7 T)</span></div>
+   <div class="stat"><b>${fmt1(m7("energy"))}</b><span>Ø Energie /5</span></div>
+   <div class="stat"><b>${fmt1(m7("mood"))}</b><span>Ø Stimmung /5</span></div>
+   <div class="stat"><b>${fmt1(m7("stress"))}</b><span>Ø Stress /5</span></div></div>
+  <h3>Check-in</h3>
+  <div class="panel stack">
+   <label class="f">Tag<input type="date" id="bDay" value="${k}" max="${today}"></label>
+   <div class="grid2">${NUMS.slice(0,3).map(([f,l,im])=>`<label class="f">${l}<input id="b_${f}" inputmode="${im}" value="${e[f]??""}"></label>`).join("")}</div>
+   <details ${e.fat!=null||e.waist!=null?"open":""}><summary class="small">Körpermaße (z. B. 1× pro Woche)</summary><div class="grid2" style="margin-top:8px">${NUMS.slice(3).map(([f,l,im])=>`<label class="f">${l}<input id="b_${f}" inputmode="${im}" value="${e[f]??""}"></label>`).join("")}</div></details>
+   ${RATE.map(([f,l,names])=>`<div class="rate">${l} <span class="hint" id="h_${f}">${e[f]?names[e[f]-1]:"nicht angegeben"}</span><div class="seg" data-f="${f}">${[1,2,3,4,5].map(n=>`<button type="button" aria-pressed="${e[f]===n}" data-n="${n}">${n}</button>`).join("")}</div></div>`).join("")}
+   <label class="f">Notiz<input id="b_note" value="${esc(e.note||"")}" placeholder="z. B. Rücken verspannt, Diät-Woche, krank …"></label>
+   <div class="row"><button class="btn primary" id="bSave">Speichern</button>${bodyEntry(k)?`<button class="btn ghost" id="bDel">Eintrag löschen</button>`:""}</div>
+  </div>
+  <h3>Gewicht</h3>${weightChart()}`;
+  if(ws.length) html+=`<h3>Wochen</h3><div class="tbl"><table><thead><tr><th>Woche</th><th class="num">Ø kg</th><th class="num">±</th><th class="num">Schlaf</th><th class="num">Energie</th></tr></thead><tbody>
+   ${ws.slice(0,12).map((w,i)=>{const pw=ws[i+1];return `<tr><td>KW ${isoWeek(w.w)}</td><td class="num">${fmt1(w.kg)}</td><td class="num">${pw&&w.kg!=null&&pw.kg!=null?signed(w.kg-pw.kg):"–"}</td><td class="num">${fmt1(w.sleep)}</td><td class="num">${fmt1(w.energy)}</td></tr>`}).join("")}</tbody></table></div>`;
+  if(B.length) html+=`<h3>Einträge</h3><div class="sets">${B.slice(0,30).map(x=>`<button class="hist-item" data-d="${x.d}"><b>${fmtDay(x.d)}</b><span class="mono small">${x.kg!=null?fmt1(x.kg)+" kg":""}</span>
+   <span class="small muted">${[x.sleep!=null?fmt1(x.sleep)+" h Schlaf":"",...RATE.filter(([f])=>x[f]).map(([f,l])=>l+" "+x[f])].filter(Boolean).join(" · ")||"–"}${x.note?" · "+esc(x.note):""}</span><span></span></button>`).join("")}</div>`;
+  app.innerHTML=html;
+  const cur={};for(const [f] of RATE)cur[f]=e[f]||null;
+  app.querySelectorAll(".seg").forEach(sg=>sg.onclick=ev=>{const b=ev.target.closest("button");if(!b)return;const f=sg.dataset.f,n=+b.dataset.n;cur[f]=cur[f]===n?null:n;
+    sg.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",+x.dataset.n===cur[f]));
+    document.getElementById("h_"+f).textContent=cur[f]?RATE.find(r=>r[0]===f)[2][cur[f]-1]:"nicht angegeben"});
+  document.getElementById("bDay").onchange=ev=>{view.bodyDay=ev.target.value||null;renderBody()};
+  document.getElementById("bSave").onclick=()=>{const n={d:k,t:Date.now()};
+    for(const [f] of NUMS){const v=parseFloat(document.getElementById("b_"+f).value.replace(",","."));if(v>0)n[f]=v}
+    for(const f in cur)if(cur[f])n[f]=cur[f];
+    const note=document.getElementById("b_note").value.trim();if(note)n.note=note;
+    saveBody(n);renderBody();toast(k===today?"Check-in gespeichert":"Eintrag für "+fmtDay(k)+" gespeichert")};
+  const del=document.getElementById("bDel");if(del)del.onclick=()=>{B=B.filter(x=>x.d!==k);kvSet("nsuns_body",B);renderBody();toast("Eintrag gelöscht")};
+  app.querySelectorAll(".hist-item").forEach(b=>b.onclick=()=>{view.bodyDay=b.dataset.d;renderBody();window.scrollTo(0,0)});
+}
+function bodyCsv(){
+  const q=v=>v==null?"":String(v).replace(".",",");
+  const rows=[["datum","gewicht_kg","schlaf_h","schritte","koerperfett_pct","bauch_cm","energie","stimmung","schlafqualitaet","stress","muskelkater","notiz"]];
+  for(const e of [...B].reverse())rows.push([keyDate(e.d).toLocaleDateString("de-DE"),q(e.kg),q(e.sleep),q(e.steps),q(e.fat),q(e.waist),q(e.energy),q(e.mood),q(e.sq),q(e.stress),q(e.sore),e.note?'"'+e.note.replace(/"/g,'""')+'"':""]);
+  return "﻿"+rows.map(r=>r.join(";")).join("\n");
 }
 
 /* ---------- Export ---------- */
@@ -740,14 +909,14 @@ async function exportFile(name,text,type){
   return true;
 }
 const backupName=()=>"kraftlog-backup-"+new Date().toISOString().slice(0,10)+".json";
-const backupJson=()=>JSON.stringify({app:"nsuns-kraftlog",v:1,exported:new Date().toISOString(),state:S,workouts:W},null,1);
+const backupJson=()=>JSON.stringify({app:"nsuns-kraftlog",v:2,exported:new Date().toISOString(),state:S,workouts:W,body:B},null,1);
 
 /* ---------- Wöchentliches iCloud-Backup ---------- */
 // Eine Web-App darf nicht selbst in iCloud Drive schreiben. Deshalb: einmal pro Woche erinnern,
 // das Backup per Teilen-Menü („In Dateien sichern“) ablegen und den Zeitpunkt merken.
 const WEEK=7*864e5;
 let CB={last:0,on:true,snooze:0};
-function backupDue(){const now=Date.now();return CB.on&&!S.active&&W.length>0&&now-CB.last>=WEEK&&now>=CB.snooze}
+function backupDue(){const now=Date.now();return CB.on&&!S.active&&(W.length>0||B.length>0)&&now-CB.last>=WEEK&&now>=CB.snooze}
 function renderCloudDue(){
   const el=document.getElementById("cloudDue");
   if(!S||!backupDue()){el.hidden=true;return}
@@ -777,6 +946,7 @@ function toCsv(){
   S=await kvGet("nsuns_state"); if(!S||!S.tm){S=defaultState();kvSet("nsuns_state",S)} else S=Object.assign(defaultState(),S);
   W=(await kvGet("nsuns_workouts"))||[];
   CB=Object.assign(CB,await kvGet("nsuns_icloud"));
+  B=(await kvGet("nsuns_body"))||[];
   render();
   if(S.active) keepAwake();
   setSync(navigator.onLine?"auf dem iPhone":"offline · auf dem iPhone");

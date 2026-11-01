@@ -28,6 +28,22 @@ Service Worker funktionieren nur über HTTPS, deshalb reicht ein reiner HTTP-Ser
   Vollautomatisch im Hintergrund geht es nicht: iOS erlaubt Web-Apps keinen direkten Zugriff auf iCloud Drive, ein Tipp ist immer nötig.
 - Die CSV (Semikolon-getrennt, deutsches Zahlenformat) öffnet direkt in Numbers oder Excel.
 
+## Körper & Verfassung
+
+Im Tab **Körper** trägst du täglich (oder wann du willst) Gewicht, Schlaf, Schritte und auf einer Skala von 1–5 Energie, Stimmung,
+Schlafqualität, Stress und Muskelkater ein, optional Körperfett und Bauchumfang. Die App rechnet daraus den Wochen-Durchschnitt (Mo–So),
+die Veränderung zur Vorwoche und den Trend in kg pro Woche. Auf „Heute“ erinnert eine Karte an den Check-in und gibt bei schlechter
+Verfassung einen Hinweis fürs Training. Die Körperdaten sind im JSON-Backup enthalten und lassen sich unter Setup als CSV exportieren.
+
+## Pausen-Timer
+
+Unter Setup → Pausen-Timer:
+- **Countdown-Ton:** kurze Töne bei 5, 4, 3, 2, 1 Sekunden und ein langer Ton bei 0, über Kopfhörer, falls verbunden.
+- **Nichts anzeigen (Standard):** Die Töne legen sich über deine Musik, laufen aber nur, solange die App offen ist (das Display bleibt im Workout an).
+- **Countdown auf dem Sperrbildschirm:** Die Pause erscheint als „Wird gerade abgespielt“ mit Restzeit auf Sperrbildschirm und im Kontrollzentrum,
+  die Töne kommen auch bei gesperrtem iPhone. iOS pausiert dafür aber Musik aus anderen Apps.
+Ein echtes Widget für den Home-Bildschirm oder eine Live-Aktivität ist für Web-Apps unter iOS nicht möglich.
+
 ## Updates
 
 Ersetze `index.html` im Repository. Zusätzlich in `sw.js` die Zeile `const CACHE = "kraftlog-v1"` hochzählen (v2, v3, …).
